@@ -157,7 +157,7 @@ def getOwnBlastScore(FASTAfile):
     #return alleleI,allelescores,Gene_Blast_DB_name
     #print alleleI
     #print len(allelescores)
-    print bestmatch
+    #print bestmatch
     return bestmatch
 
 
@@ -226,7 +226,6 @@ def getBlastScoreRatios(pathQuery,allelescores):
                         bestmatches[str(alignment.hit_def)]=[str(match.score),str(blastScoreRatio),"Yes"]
 
                 bestmatch=bestmatches[str(alignment.hit_def)][1]
-                print 
 
             else:
                 break
@@ -416,7 +415,7 @@ def main():
         os.remove(pathQuery)
         os.remove(pathRef)
 
-    print generations
+    #print generations
     plt.plot(BSR,NuScore, 'ro')
     plt.axis([0, 1, 0, 1])
     plt.xlabel('BSR')
