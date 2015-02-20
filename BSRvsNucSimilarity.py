@@ -105,6 +105,7 @@ def getOwnBlastScore(FASTAfile):
     names=""
     alleleProt=''
     proteome=""
+    bestmatch=0
     for allele in gene_fp: #new db for each allele to blast it against himself
         #print allele.seq
         #print type(allele.seq)
@@ -126,7 +127,7 @@ def getOwnBlastScore(FASTAfile):
         #print cline
     allelescore=0
     blast_records = runBlastParser(cline,blast_out_file, "")
-
+    allelescores={}
     for blast_record in blast_records:
         found=False 
         for alignment in blast_record.alignments:
@@ -145,6 +146,7 @@ def getOwnBlastScore(FASTAfile):
                     except KeyError:
                         allelescores[str(alignment.hit_def)] = int(match.score)
                         break
+                bestmatch=allelescores[str(alignment.hit_def)]
             else:
                 break
     #print allelescores
@@ -155,11 +157,12 @@ def getOwnBlastScore(FASTAfile):
     #return alleleI,allelescores,Gene_Blast_DB_name
     #print alleleI
     #print len(allelescores)
-    return allelescores
+    print bestmatch
+    return bestmatch
 
 
 
-def getBlastScoreRatios(pathQuery):
+def getBlastScoreRatios(pathQuery,allelescores):
     
     g_fp = HTSeq.FastaReader(pathQuery)
     countGenes=0
@@ -189,6 +192,7 @@ def getBlastScoreRatios(pathQuery):
     matchR=[]
     m=[]
     prevName=""
+    bestmatch=""
     #bestmatches={}
     for blast_record in blast_records:
         found=False 
@@ -204,7 +208,7 @@ def getBlastScoreRatios(pathQuery):
                     #print alignment.hit_def
                     #print blast_record.query
                     #print alignment.hit_def
-                    blastScoreRatio = float(match.score) / float(allelescores[str(alignment.hit_def)])
+                    blastScoreRatio = float(match.score) / float(allelescores)
                     #print blastScoreRatio
 
                     cdsStrName=blast_record.query
@@ -221,11 +225,14 @@ def getBlastScoreRatios(pathQuery):
                         #print allelescores
                         bestmatches[str(alignment.hit_def)]=[str(match.score),str(blastScoreRatio),"Yes"]
 
+                bestmatch=bestmatches[str(alignment.hit_def)][1]
+                print 
+
             else:
                 break
 
 
-    return bestmatches[str(1)][1]
+    return bestmatch
 
 def getNucSimilarity(pathQuery, IsCreateDB, BestScore, IsFirstTime):
     DbName = "Databases/NucSimi_db"
@@ -321,8 +328,7 @@ def main():
     
     
     parser = argparse.ArgumentParser(description="This program plots the values of Blast Score Ratio and nucleotide sequence similarity in an interval of n generations, under a specific mutation rate.")
-    parser.add_argument('-i', nargs='?', type=str, help="Input query file with one nucleotide sequence", required=True)
-    parser.add_argument('-r', nargs='?', type=str, help="Input reference file with one nucleotide sequence", required=True)
+    parser.add_argument('-i', nargs='?', type=str, help="Input fasta file with nucleotide sequences", required=True)
     parser.add_argument('-n', nargs='?', type=int, help='Number of generations passed between each calculation of BSR and nucleotide similarity.', required=True)
     parser.add_argument('-c', nargs='?', type=int, help='Number of BSR and nucleotide similarity calculations.', required=True)
     parser.add_argument('-m', nargs='?', type=float, help="Mutation Rate", required=False)
@@ -331,73 +337,86 @@ def main():
 
     mutRate=args.m
     inputFileQ = args.i
-    inputFileR = args.r
     gen=args.n
     nPlot=args.c
 
-    pathRef= "reference.fasta"
-    pathQuery = "query.fasta"
+    pathRef= "reference_seq123.fasta"
+    pathQuery = "query_seq123.fasta"
 
     BSR = []
     NuScore= []
     generations = []
     print 'Running ' + str(gen*nPlot) +" generations."
 
-    allelescores={}
-    bestmatches={}
-    getFASTAfeatures(inputFileR)
-    refScore = getOwnBlastScore(pathRef)
-    bestBSR = getBlastScoreRatios(inputFileQ)
-    #print bestBSR
-    queryFile = HTSeq.FastaReader(inputFileQ)
-    for contig in queryFile:
-        name=contig.name
-        refSeq = contig.seq
+    inputF = HTSeq.FastaReader(inputFileQ)
 
-    Identity = checkSimilarity(refSeq,refSeq)
-    #bestNuScore, Identity = getNucSimilarity("query.fasta","yes",0,True)
-    Iden=Identity
-    BSR.append(float(bestBSR))
-    NuScore.append(float(Identity))
-    generations.append([float(bestBSR),float(Identity)])
+    for contig in inputF:
+        print 'Running ' + str(gen*nPlot) +" generations for sequence " + contig.name + "."
+        ref = open(pathRef,"w")
+        ref.write(">"+contig.name+"\n"+contig.seq+"\n")
+        ref.close()
+        query = open(pathQuery,"w")
+        query.write(">"+contig.name+"\n"+contig.seq+"\n")
+        query.close()
 
-    for i in range(0,nPlot):
-        newSeq = ""
-        queryFile = HTSeq.FastaReader(inputFileQ)
+        allelescores={}
+        bestmatches={}
+        getFASTAfeatures(pathRef)
+        refScore = getOwnBlastScore(pathRef)
+        bestBSR = getBlastScoreRatios(pathQuery,refScore)
+        #print bestBSR
+        queryFile = HTSeq.FastaReader(pathQuery)
         for contig in queryFile:
             name=contig.name
-            for j in range(0,gen):
-                start = contig.seq[0:3]
-                #print start
-                end = contig.seq[len(contig.seq)-3:]
-                seqToUse = contig.seq[3:len(contig.seq)-3]
-                #print seqToUse
-                newSeq = mutate(seqToUse,mutRate)
-                IsStop = checkStops(newSeq)
-                if IsStop:
-                    newSeq = contig.seq
-                else:
-                    newSeq = start + newSeq + end
-            newfile = open(inputFileQ,"w")
-            newfile.write(">"+str(name)+"\n"+newSeq+"\n")
-            newfile.close()
+            refSeq = contig.seq
 
-        bestmatches={}
-        getFASTAfeatures(inputFileR)
-        #refScore = getOwnBlastScore(pathRef)
-        bestBSR = getBlastScoreRatios(inputFileQ)
-        Identity = checkSimilarity(newSeq,refSeq)
-        #bestNuScore, Identity = getNucSimilarity("query.fasta","no", bestNuScore, False)
+        Identity = checkSimilarity(refSeq,refSeq)
+        #bestNuScore, Identity = getNucSimilarity("query.fasta","yes",0,True)
+        Iden=Identity
         BSR.append(float(bestBSR))
         NuScore.append(float(Identity))
+        generations.append([float(bestBSR),float(Identity)])
 
-    generations.append([BSR,NuScore])
+        for i in range(0,nPlot):
+            newSeq = ""
+            queryFile = HTSeq.FastaReader(pathQuery)
+            for contig in queryFile:
+                name=contig.name
+                for j in range(0,gen):
+                    start = contig.seq[0:3]
+                    #print start
+                    end = contig.seq[len(contig.seq)-3:]
+                    seqToUse = contig.seq[3:len(contig.seq)-3]
+                    #print seqToUse
+                    newSeq = mutate(seqToUse,mutRate)
+                    IsStop = checkStops(newSeq)
+                    if IsStop:
+                        newSeq = contig.seq
+                    else:
+                        newSeq = start + newSeq + end
+                newfile = open(pathQuery,"w")
+                newfile.write(">"+str(name)+"\n"+newSeq+"\n")
+                newfile.close()
 
-    #print generations
+            bestmatches={}
+            allelescores={}
+            getFASTAfeatures(pathRef)
+            refScore = getOwnBlastScore(pathRef)
+            bestBSR = getBlastScoreRatios(pathQuery,refScore)
+            Identity = checkSimilarity(newSeq,refSeq)
+            #bestNuScore, Identity = getNucSimilarity("query.fasta","no", bestNuScore, False)
+            BSR.append(float(bestBSR))
+            NuScore.append(float(Identity))
 
-    os.remove("proteome.fasta")
-    os.remove("referenceAA.fasta")
+        generations.append([BSR,NuScore])
 
+
+        os.remove("proteome.fasta")
+        os.remove("referenceAA.fasta")
+        os.remove(pathQuery)
+        os.remove(pathRef)
+
+    print generations
     plt.plot(BSR,NuScore, 'ro')
     plt.axis([0, 1, 0, 1])
     plt.xlabel('BSR')
