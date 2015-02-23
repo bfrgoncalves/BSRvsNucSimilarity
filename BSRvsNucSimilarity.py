@@ -1,3 +1,4 @@
+from pylab import *
 from Bio import SeqIO
 from BCBio import GFF
 from Bio.Blast import NCBIXML
@@ -16,6 +17,8 @@ from CommonFastaFunctions import runBlastParser
 import random
 import matplotlib.pyplot as plt
 import argparse
+import random
+
 
 
 #Criar a Blast DB:
@@ -230,7 +233,7 @@ def getBlastScoreRatios(pathQuery,allelescores):
             else:
                 break
 
-
+    #print bestmatch
     return bestmatch
 
 def getNucSimilarity(pathQuery, IsCreateDB, BestScore, IsFirstTime):
@@ -328,8 +331,8 @@ def main():
     
     parser = argparse.ArgumentParser(description="This program plots the values of Blast Score Ratio and nucleotide sequence similarity in an interval of n generations, under a specific mutation rate.")
     parser.add_argument('-i', nargs='?', type=str, help="Input fasta file with nucleotide sequences", required=True)
-    parser.add_argument('-n', nargs='?', type=int, help='Number of generations passed between each calculation of BSR and nucleotide similarity.', required=True)
-    parser.add_argument('-c', nargs='?', type=int, help='Number of BSR and nucleotide similarity calculations.', required=True)
+    parser.add_argument('-n', nargs='?', type=int, help='Number of generations passed and calculations of BSR and nucleotide similarity.', required=True)
+    #parser.add_argument('-c', nargs='?', type=int, help='Number of BSR and nucleotide similarity calculations.', required=True)
     parser.add_argument('-m', nargs='?', type=float, help="Mutation Rate", required=False)
 
     args = parser.parse_args()
@@ -337,7 +340,7 @@ def main():
     mutRate=args.m
     inputFileQ = args.i
     gen=args.n
-    nPlot=args.c
+    #nPlot=args.c
 
     pathRef= "reference_seq123.fasta"
     pathQuery = "query_seq123.fasta"
@@ -345,12 +348,17 @@ def main():
     BSR = []
     NuScore= []
     generations = []
-    print 'Running ' + str(gen*nPlot) +" generations."
+    print 'Running ' + str(gen) +" generations."
 
     inputF = HTSeq.FastaReader(inputFileQ)
 
     for contig in inputF:
-        print 'Running ' + str(gen*nPlot) +" generations for sequence " + contig.name + "."
+        BSR = []
+        NuScore= []
+        generations = []
+        allBSR=[]
+        allNuc=[]
+        print 'Running ' + str(gen) +" generations for sequence " + contig.name + "."
         ref = open(pathRef,"w")
         ref.write(">"+contig.name+"\n"+contig.seq+"\n")
         ref.close()
@@ -374,28 +382,31 @@ def main():
         Iden=Identity
         BSR.append(float(bestBSR))
         NuScore.append(float(Identity))
-        generations.append([float(bestBSR),float(Identity)])
+        #generations.append([float(bestBSR),float(Identity)])
 
-        for i in range(0,nPlot):
+        #for i in range(0,nPlot):
+        for j in range(0,gen):
             newSeq = ""
+            #print pathQuery
             queryFile = HTSeq.FastaReader(pathQuery)
             for contig in queryFile:
                 name=contig.name
-                for j in range(0,gen):
-                    start = contig.seq[0:3]
-                    #print start
-                    end = contig.seq[len(contig.seq)-3:]
-                    seqToUse = contig.seq[3:len(contig.seq)-3]
-                    #print seqToUse
-                    newSeq = mutate(seqToUse,mutRate)
-                    IsStop = checkStops(newSeq)
-                    if IsStop:
-                        newSeq = contig.seq
-                    else:
-                        newSeq = start + newSeq + end
-                newfile = open(pathQuery,"w")
-                newfile.write(">"+str(name)+"\n"+newSeq+"\n")
-                newfile.close()
+            start = contig.seq[0:3]
+            #print start
+            end = contig.seq[len(contig.seq)-3:]
+            seqToUse = contig.seq[3:len(contig.seq)-3]
+            #print seqToUse
+            newSeq = mutate(seqToUse,mutRate)
+            IsStop = checkStops(newSeq)
+            while IsStop:
+                newSeq = contig.seq
+                newSeq = mutate(seqToUse,mutRate)
+                IsStop = checkStops(newSeq)
+
+            newSeq = start + newSeq + end
+            newfile = open(pathQuery,"w")
+            newfile.write(">"+str(name)+"\n"+newSeq+"\n")
+            newfile.close()
 
             bestmatches={}
             allelescores={}
@@ -403,11 +414,25 @@ def main():
             refScore = getOwnBlastScore(pathRef)
             bestBSR = getBlastScoreRatios(pathQuery,refScore)
             Identity = checkSimilarity(newSeq,refSeq)
+            #print bestBSR
             #bestNuScore, Identity = getNucSimilarity("query.fasta","no", bestNuScore, False)
-            BSR.append(float(bestBSR))
+            try:
+                BSR.append(float(bestBSR))
+            except ValueError:
+                BSR.append(float(0))
+                bestBSR="0"
             NuScore.append(float(Identity))
+            allBSR.append(float(bestBSR))
+            allNuc.append(float(Identity))
+            if bestBSR == "0":
+                print "BSR value became 0 at generation " + str(j)
+                break
 
         generations.append([BSR,NuScore])
+
+        #fit = polyfit(i[0],i[1],1)
+        #fit_fn = poly1d(fit)
+        plt.plot(BSR,NuScore, marker='o', color=(random.random(),random.random(),random.random()), linestyle="None")
 
 
         os.remove("proteome.fasta")
@@ -416,8 +441,12 @@ def main():
         os.remove(pathRef)
 
     #print generations
-    plt.plot(BSR,NuScore, 'ro')
+    (m,b) = polyfit(allBSR,allNuc,1)
+    yp = polyval([m,b],allBSR)
+    plt.plot(allBSR, yp, '-k')
+
     plt.axis([0, 1, 0, 1])
+    plt.grid()
     plt.xlabel('BSR')
     plt.ylabel('Nuc Similarity')
     plt.show()
